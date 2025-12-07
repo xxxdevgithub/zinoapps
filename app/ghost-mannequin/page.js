@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useRef } from "react";
-import styled, { css } from "styled-components";
+import styled from "styled-components";
 import Link from "next/link";
 import { FaArrowLeft, FaCamera, FaSyncAlt, FaPalette, FaDownload } from "react-icons/fa";
 import { HexColorPicker } from "react-colorful";
@@ -83,7 +83,7 @@ const ResultContainer = styled.div`
     align-items: center;
     justify-content: center;
     position: relative;
-    margin-bottom: 80px;
+    margin-bottom: 100px; /* 하단 버튼 공간 확보 */
 `;
 
 const ImageWrapper = styled.div`
@@ -93,18 +93,28 @@ const ImageWrapper = styled.div`
     border-radius: 20px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
     background: #fff;
+    position: relative;
+
+    /* 모바일에서 꾹 누르기(Context Menu) 허용 */
+    -webkit-touch-callout: default;
+    user-select: none;
 
     img {
         width: 100%;
         height: 100%;
         object-fit: contain;
-        ${(props) =>
-            props.$isFlipped &&
-            css`
-                transform: scaleX(-1);
-            `}
-        transition: transform 0.3s ease;
+        /* CSS 반전 제거: 실제 데이터를 변경하므로 스타일 불필요 */
+        transition: opacity 0.3s ease;
     }
+`;
+
+const TipText = styled.p`
+    margin-top: 12px;
+    font-size: 13px;
+    color: #8b95a1;
+    background-color: rgba(0, 0, 0, 0.05);
+    padding: 6px 12px;
+    border-radius: 20px;
 `;
 
 const BottomBar = styled.div`
@@ -282,11 +292,11 @@ export default function GhostMannequinPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState("");
     const [resultImage, setResultImage] = useState(null);
-    const [isFlipped, setIsFlipped] = useState(false);
+    // isFlipped 상태 제거 -> 실제 데이터를 뒤집을 것이므로 불필요
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [pickerColor, setPickerColor] = useState("#3182f6");
 
-    // 파일 선택 시 압축 로직 추가
+    // 파일 선택 시 압축 로직
     const handleFileSelect = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -296,10 +306,8 @@ export default function GhostMannequinPage() {
         setResultImage(null);
 
         try {
-            // 1. 이미지를 압축하여 Base64로 변환 (최대 가로 1024px, 퀄리티 0.8)
             const compressedBase64 = await compressImage(file, 1024, 0.8);
-
-            setLoadingMessage("고스트 마네킹 작업 중...");
+            setLoadingMessage("유령 마네킹 작업 중...");
             await generateGhostMannequin(compressedBase64);
         } catch (error) {
             alert("오류 발생: " + error.message);
@@ -307,7 +315,6 @@ export default function GhostMannequinPage() {
         }
     };
 
-    // [중요] 이미지 압축 및 리사이징 함수
     const compressImage = (file, maxWidth, quality) => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -320,7 +327,6 @@ export default function GhostMannequinPage() {
                     let width = img.width;
                     let height = img.height;
 
-                    // 비율 유지하며 리사이징
                     if (width > maxWidth) {
                         height = (maxWidth / width) * height;
                         width = maxWidth;
@@ -330,14 +336,11 @@ export default function GhostMannequinPage() {
                     canvas.height = height;
                     const ctx = canvas.getContext("2d");
                     ctx.drawImage(img, 0, 0, width, height);
-
-                    // 압축 후 Base64 문자열 반환 (헤더 제거)
-                    const dataUrl = canvas.toDataURL("image/jpeg", quality);
-                    resolve(dataUrl.split(",")[1]);
+                    resolve(canvas.toDataURL("image/jpeg", quality).split(",")[1]);
                 };
-                img.onerror = (error) => reject(error);
+                img.onerror = reject;
             };
-            reader.onerror = (error) => reject(error);
+            reader.onerror = reject;
         });
     };
 
@@ -349,7 +352,6 @@ export default function GhostMannequinPage() {
                 body: JSON.stringify({ base64Image: base64Data }),
             });
 
-            // 에러 처리 강화
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`Server Error (${response.status}): ${errorText}`);
@@ -393,7 +395,6 @@ export default function GhostMannequinPage() {
             if (!data.success) throw new Error(data.error);
 
             setResultImage(`data:image/jpeg;base64,${data.image}`);
-            setIsFlipped(false);
         } catch (error) {
             alert("색상 변경 실패: " + error.message);
         } finally {
@@ -401,30 +402,38 @@ export default function GhostMannequinPage() {
         }
     };
 
-    const handleSave = () => {
+    // [핵심] 실제 이미지 데이터를 좌우 반전 시키는 함수
+    // 이렇게 해야 꾹 눌러서 저장할 때도 반전된 상태로 저장됩니다.
+    const handleRealFlip = () => {
         if (!resultImage) return;
 
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
         const img = new Image();
         img.src = resultImage;
         img.onload = () => {
+            const canvas = document.createElement("canvas");
             canvas.width = img.width;
             canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
 
-            if (isFlipped) {
-                ctx.translate(img.width, 0);
-                ctx.scale(-1, 1);
-            }
+            // 캔버스에서 좌우 반전 처리
+            ctx.translate(img.width, 0);
+            ctx.scale(-1, 1);
             ctx.drawImage(img, 0, 0);
 
-            const link = document.createElement("a");
-            link.href = canvas.toDataURL("image/jpeg");
-            link.download = `ghost_mannequin_${Date.now()}.jpg`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            // 결과를 다시 State에 저장
+            setResultImage(canvas.toDataURL("image/jpeg"));
         };
+    };
+
+    // 저장하기 버튼 (기존 기능 유지)
+    const handleSave = () => {
+        if (!resultImage) return;
+        const link = document.createElement("a");
+        link.href = resultImage;
+        link.download = `ghost_mannequin_${Date.now()}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     return (
@@ -455,8 +464,12 @@ export default function GhostMannequinPage() {
                 </>
             ) : (
                 <ResultContainer>
-                    <ImageWrapper $isFlipped={isFlipped}>
+                    <ImageWrapper>
+                        {/* 이제 resultImage 자체가 변경되므로 img 태그의 transform 스타일은 필요 없습니다.
+                   브라우저 기본 동작으로 꾹 누르면 저장 메뉴가 뜹니다.
+                */}
                         {resultImage && <img src={resultImage} alt="Generated" />}
+
                         {isLoading && (
                             <LoadingOverlay>
                                 <div style={{ border: "3px solid #f3f3f3", borderTop: "3px solid #3182f6", borderRadius: "50%", width: "30px", height: "30px", animation: "spin 1s linear infinite" }}></div>
@@ -464,12 +477,14 @@ export default function GhostMannequinPage() {
                             </LoadingOverlay>
                         )}
                     </ImageWrapper>
+                    {/* 사용자 팁 추가 */}
+                    {!isLoading && <TipText>💡 이미지를 꾹 누르면 저장/복사할 수 있어요</TipText>}
                 </ResultContainer>
             )}
 
             {resultImage && !isLoading && (
                 <BottomBar>
-                    <IconButton onClick={() => setIsFlipped(!isFlipped)} disabled={isLoading}>
+                    <IconButton onClick={handleRealFlip} disabled={isLoading}>
                         <BtnIcon>
                             <FaSyncAlt />
                         </BtnIcon>
@@ -492,11 +507,8 @@ export default function GhostMannequinPage() {
                 <ColorPickerOverlay onClick={() => setShowColorPicker(false)}>
                     <PickerWrapper onClick={(e) => e.stopPropagation()}>
                         <h3 style={{ marginBottom: "20px", fontSize: "18px" }}>색상 선택</h3>
-
                         <HexColorPicker color={pickerColor} onChange={setPickerColor} />
-
                         <ColorPreview color={pickerColor}>{pickerColor.toUpperCase()}</ColorPreview>
-
                         <PickerButtons>
                             <PickerBtn onClick={() => setShowColorPicker(false)}>취소</PickerBtn>
                             <PickerBtn $primary onClick={handleColorChangeConfirm}>
