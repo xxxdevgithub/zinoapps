@@ -3,7 +3,7 @@ import React, { useState, useRef } from "react";
 import styled, { css } from "styled-components";
 import Link from "next/link";
 import { FaArrowLeft, FaCamera, FaSyncAlt, FaPalette, FaDownload } from "react-icons/fa";
-import { HexColorPicker } from "react-colorful"; // 변경된 라이브러리
+import { HexColorPicker } from "react-colorful";
 
 // --- Styled Components ---
 const Container = styled.div`
@@ -190,7 +190,6 @@ const LoadingText = styled.p`
     color: #333d4b;
 `;
 
-// --- New Color Picker Styles ---
 const ColorPickerOverlay = styled.div`
     position: fixed;
     top: 0;
@@ -214,7 +213,6 @@ const PickerWrapper = styled.div`
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
     width: 300px;
 
-    /* React Colorful Customization */
     .react-colorful {
         width: 100%;
         height: 200px;
@@ -271,7 +269,6 @@ const PickerBtn = styled.button`
     }
 `;
 
-// Helper: 배경색에 따라 텍스트 색상 결정 (흰/검)
 function getContrastColor(hexColor) {
     const r = parseInt(hexColor.substr(1, 2), 16);
     const g = parseInt(hexColor.substr(3, 2), 16);
@@ -289,34 +286,61 @@ export default function GhostMannequinPage() {
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [pickerColor, setPickerColor] = useState("#3182f6");
 
-    // 파일 선택
+    // 파일 선택 시 압축 로직 추가
     const handleFileSelect = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
         setIsLoading(true);
-        setLoadingMessage("유령 마네킹 작업 중...");
+        setLoadingMessage("이미지 최적화 중...");
         setResultImage(null);
 
         try {
-            const base64 = await convertFileToBase64(file);
-            await generateGhostMannequin(base64);
+            // 1. 이미지를 압축하여 Base64로 변환 (최대 가로 1024px, 퀄리티 0.8)
+            const compressedBase64 = await compressImage(file, 1024, 0.8);
+
+            setLoadingMessage("유령 마네킹 작업 중...");
+            await generateGhostMannequin(compressedBase64);
         } catch (error) {
             alert("오류 발생: " + error.message);
             setIsLoading(false);
         }
     };
 
-    const convertFileToBase64 = (file) => {
+    // [중요] 이미지 압축 및 리사이징 함수
+    const compressImage = (file, maxWidth, quality) => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);
-            reader.onload = () => resolve(reader.result.toString().split(",")[1]);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement("canvas");
+                    let width = img.width;
+                    let height = img.height;
+
+                    // 비율 유지하며 리사이징
+                    if (width > maxWidth) {
+                        height = (maxWidth / width) * height;
+                        width = maxWidth;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext("2d");
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // 압축 후 Base64 문자열 반환 (헤더 제거)
+                    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+                    resolve(dataUrl.split(",")[1]);
+                };
+                img.onerror = (error) => reject(error);
+            };
             reader.onerror = (error) => reject(error);
         });
     };
 
-    // 1. 이미지 생성 (Generate)
     const generateGhostMannequin = async (base64Data) => {
         try {
             const response = await fetch("/api/ghost/generate", {
@@ -324,8 +348,14 @@ export default function GhostMannequinPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ base64Image: base64Data }),
             });
-            const data = await response.json();
 
+            // 에러 처리 강화
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Server Error (${response.status}): ${errorText}`);
+            }
+
+            const data = await response.json();
             if (!data.success) throw new Error(data.error);
 
             setResultImage(`data:image/jpeg;base64,${data.image}`);
@@ -336,7 +366,6 @@ export default function GhostMannequinPage() {
         }
     };
 
-    // 2. 색상 변경 (Recolor)
     const handleColorChangeConfirm = async () => {
         setShowColorPicker(false);
         if (!resultImage) return;
@@ -354,12 +383,17 @@ export default function GhostMannequinPage() {
                     hexColor: pickerColor,
                 }),
             });
-            const data = await response.json();
 
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Server Error (${response.status}): ${errorText}`);
+            }
+
+            const data = await response.json();
             if (!data.success) throw new Error(data.error);
 
             setResultImage(`data:image/jpeg;base64,${data.image}`);
-            setIsFlipped(false); // 새로운 이미지가 왔으므로 반전 초기화
+            setIsFlipped(false);
         } catch (error) {
             alert("색상 변경 실패: " + error.message);
         } finally {
@@ -367,7 +401,6 @@ export default function GhostMannequinPage() {
         }
     };
 
-    // 저장하기
     const handleSave = () => {
         if (!resultImage) return;
 
@@ -460,7 +493,6 @@ export default function GhostMannequinPage() {
                     <PickerWrapper onClick={(e) => e.stopPropagation()}>
                         <h3 style={{ marginBottom: "20px", fontSize: "18px" }}>색상 선택</h3>
 
-                        {/* Hex Color Picker Component */}
                         <HexColorPicker color={pickerColor} onChange={setPickerColor} />
 
                         <ColorPreview color={pickerColor}>{pickerColor.toUpperCase()}</ColorPreview>
