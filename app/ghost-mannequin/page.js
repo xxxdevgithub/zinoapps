@@ -299,7 +299,7 @@ export default function GhostMannequinPage() {
             // 1. 이미지를 압축하여 Base64로 변환 (최대 가로 1024px, 퀄리티 0.8)
             const compressedBase64 = await compressImage(file, 1024, 0.8);
 
-            setLoadingMessage("유령 마네킹 작업 중...");
+            setLoadingMessage("고스트 마네킹 작업 중...");
             await generateGhostMannequin(compressedBase64);
         } catch (error) {
             alert("오류 발생: " + error.message);

@@ -1,65 +1,67 @@
 import { NextResponse } from "next/server";
+import { GoogleGenAI } from "@google/genai";
 
-const MODEL_NAME = "gemini-3-pro-image-preview"; // 요청하신 모델명 고정
-const API_KEY = process.env.GOOGLE_API_KEY;
+const MODEL_NAME = "gemini-3-pro-image-preview";
 
 export async function POST(request) {
     try {
-        const { base64Image, hexColor } = await request.json();
+        const apiKey = process.env.GOOGLE_API_KEY;
+        if (!apiKey) {
+            return NextResponse.json({ error: "API Key가 설정되지 않았습니다." }, { status: 500 });
+        }
 
-        const RECOLOR_PROMPT = `Change the color of the garment in the provided image to ${hexColor}.
+        const { base64Image, hexColor } = await request.json();
+        if (!base64Image || !hexColor) {
+            return NextResponse.json({ error: "필수 데이터가 누락되었습니다." }, { status: 400 });
+        }
+
+        const ai = new GoogleGenAI({ apiKey });
+
+        const prompt = `Change the color of the garment in the provided image to ${hexColor}.
 Crucial Requirement: This operation must be a precise color hue shift strictly isolated to the fabric area. You MUST preserve the exact original texture, fabric weave, wrinkles, folds, lighting, shadows, and highlights. Do NOT re-render or alter the shape, drape, or dimensionality of the garment in any way. The background and everything else must remain identical to the original image. The final result should look exactly like the input photo, but only with a different fabric color`;
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
-
-        const requestBody = {
-            contents: [
-                {
-                    parts: [{ text: RECOLOR_PROMPT }, { inline_data: { mime_type: "image/jpeg", data: base64Image } }],
-                },
-            ],
-            generationConfig: {
-                response_modalities: ["IMAGE"],
-                temperature: 0.4,
+        const contents = [
+            {
+                role: "user",
+                parts: [
+                    { text: prompt },
+                    {
+                        inlineData: {
+                            mimeType: "image/jpeg",
+                            data: base64Image,
+                        },
+                    },
+                ],
             },
+        ];
+
+        const config = {
+            responseModalities: ["IMAGE"],
         };
 
-        const response = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(requestBody),
+        const response = await ai.models.generateContent({
+            model: MODEL_NAME,
+            config,
+            contents,
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("Recolor API Error Detail:", errorText);
-            throw new Error(`Gemini API Error: ${response.status}`);
+        const candidate = response.candidates?.[0];
+        const firstPart = candidate?.content?.parts?.[0];
+
+        if (firstPart?.inlineData?.data) {
+            return NextResponse.json({
+                success: true,
+                image: firstPart.inlineData.data,
+            });
         }
 
-        const data = await response.json();
-        let generatedData = null;
-
-        const candidates = data.candidates;
-        if (candidates && candidates.length > 0) {
-            const parts = candidates[0].content.parts;
-            for (const part of parts) {
-                if (part.inlineData) {
-                    generatedData = part.inlineData.data;
-                    break;
-                } else if (part.inline_data) {
-                    generatedData = part.inline_data.data;
-                    break;
-                }
-            }
+        if (firstPart?.text) {
+            return NextResponse.json({ error: `이미지 대신 텍스트가 반환됨: ${firstPart.text}` }, { status: 400 });
         }
 
-        if (!generatedData) {
-            throw new Error("색상 변경된 이미지가 생성되지 않았습니다.");
-        }
-
-        return NextResponse.json({ success: true, image: generatedData });
+        throw new Error("응답에 유효한 데이터가 없습니다.");
     } catch (error) {
-        console.error("Recolor API Error:", error);
-        return NextResponse.json({ error: error.message || "Recolor failed" }, { status: 500 });
+        console.error("Recolor SDK Error:", error);
+        return NextResponse.json({ error: error.message || "SDK Error" }, { status: 500 });
     }
 }
