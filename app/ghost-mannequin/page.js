@@ -83,17 +83,22 @@ const ResultContainer = styled.div`
     align-items: center;
     justify-content: center;
     position: relative;
-    margin-bottom: 100px; /* 하단 버튼 공간 확보 */
+    margin-bottom: 100px;
 `;
 
+// 💡 수정된 부분: ImageWrapper에 최소 높이와 flex 정렬을 추가했습니다.
 const ImageWrapper = styled.div`
     width: 100%;
+    min-height: 400px; /* 이미지가 없을 때 높이가 0이 되는 것을 방지 */
     max-height: 60vh;
     overflow: hidden;
     border-radius: 20px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
     background: #fff;
     position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 
     /* 모바일에서 꾹 누르기(Context Menu) 허용 */
     -webkit-touch-callout: default;
@@ -103,7 +108,6 @@ const ImageWrapper = styled.div`
         width: 100%;
         height: 100%;
         object-fit: contain;
-        /* CSS 반전 제거: 실제 데이터를 변경하므로 스타일 불필요 */
         transition: opacity 0.3s ease;
     }
 `;
@@ -292,11 +296,9 @@ export default function GhostMannequinPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState("");
     const [resultImage, setResultImage] = useState(null);
-    // isFlipped 상태 제거 -> 실제 데이터를 뒤집을 것이므로 불필요
     const [showColorPicker, setShowColorPicker] = useState(false);
     const [pickerColor, setPickerColor] = useState("#3182f6");
 
-    // 파일 선택 시 압축 로직
     const handleFileSelect = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -402,8 +404,6 @@ export default function GhostMannequinPage() {
         }
     };
 
-    // [핵심] 실제 이미지 데이터를 좌우 반전 시키는 함수
-    // 이렇게 해야 꾹 눌러서 저장할 때도 반전된 상태로 저장됩니다.
     const handleRealFlip = () => {
         if (!resultImage) return;
 
@@ -415,17 +415,14 @@ export default function GhostMannequinPage() {
             canvas.height = img.height;
             const ctx = canvas.getContext("2d");
 
-            // 캔버스에서 좌우 반전 처리
             ctx.translate(img.width, 0);
             ctx.scale(-1, 1);
             ctx.drawImage(img, 0, 0);
 
-            // 결과를 다시 State에 저장
             setResultImage(canvas.toDataURL("image/jpeg"));
         };
     };
 
-    // 저장하기 버튼 (기존 기능 유지)
     const handleSave = () => {
         if (!resultImage) return;
         const link = document.createElement("a");
@@ -465,9 +462,6 @@ export default function GhostMannequinPage() {
             ) : (
                 <ResultContainer>
                     <ImageWrapper>
-                        {/* 이제 resultImage 자체가 변경되므로 img 태그의 transform 스타일은 필요 없습니다.
-                   브라우저 기본 동작으로 꾹 누르면 저장 메뉴가 뜹니다.
-                */}
                         {resultImage && <img src={resultImage} alt="Generated" />}
 
                         {isLoading && (
@@ -477,7 +471,6 @@ export default function GhostMannequinPage() {
                             </LoadingOverlay>
                         )}
                     </ImageWrapper>
-                    {/* 사용자 팁 추가 */}
                     {!isLoading && <TipText>💡 이미지를 꾹 누르면 저장/복사할 수 있어요</TipText>}
                 </ResultContainer>
             )}
